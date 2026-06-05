@@ -40,21 +40,26 @@ def load_data() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
-    return (
+    summary = (
         df.groupby(["pick_bin", "era"], observed=True)
         .agg(
-            n_player_seasons =("VORP_per_1M", "count"),
-            VORP_per_1M_mean =("VORP_per_1M", "mean"),
-            VORP_per_1M_med  =("VORP_per_1M", "median"),
-            WS_per_1M_mean   =("WS_per_1M",   "mean"),
-            WS_per_1M_med    =("WS_per_1M",   "median"),
-            avg_salary_M     =("SALARY_USD",   lambda x: x.mean() / 1e6),
-            avg_VORP         =("VORP",         "mean"),
-            avg_WS           =("WS",           "mean"),
-            avg_BPM          =("BPM",          "mean"),
+            n_player_seasons  =("VORP_per_1M", "count"),
+            VORP_per_1M_mean  =("VORP_per_1M", "mean"),
+            VORP_per_1M_med   =("VORP_per_1M", "median"),
+            VORP_per_1M_std   =("VORP_per_1M", "std"),
+            WS_per_1M_mean    =("WS_per_1M",   "mean"),
+            WS_per_1M_med     =("WS_per_1M",   "median"),
+            avg_salary_M      =("SALARY_USD",   lambda x: x.mean() / 1e6),
+            avg_VORP          =("VORP",         "mean"),
+            avg_WS            =("WS",           "mean"),
+            avg_BPM           =("BPM",          "mean"),
+            bust_rate         =("VORP",         lambda x: (x < 0).mean()),
         )
         .reset_index()
     )
+    # Sharpe analog: mean return / std dev (higher = better risk-adjusted return)
+    summary["sharpe_analog"] = summary["VORP_per_1M_mean"] / summary["VORP_per_1M_std"]
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +137,42 @@ def plot_era_comparison_line(df: pd.DataFrame):
     plt.savefig(FIGURES_DIR / "fig3_era_comparison_line.png", dpi=150, bbox_inches="tight")
     plt.close()
     print("  Saved fig3_era_comparison_line.png")
+
+
+def plot_risk_return(summary: pd.DataFrame):
+    """
+    Risk-return scatter: each point is a pick bin * era combination.
+    X = std dev of VORP/dollar (risk), Y = mean VORP/dollar (return).
+    Analogous to a mean-variance plot in portfolio theory.
+    """
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    markers = {"Pre-Analytics": "o", "Post-Analytics": "s"}
+    for _, row in summary.iterrows():
+        color  = ERA_COLORS[row["era"]]
+        marker = markers[row["era"]]
+        ax.scatter(row["VORP_per_1M_std"], row["VORP_per_1M_mean"],
+                   color=color, marker=marker, s=180, zorder=3)
+        ax.annotate(
+            f"{row['pick_bin']}\n({row['era'][:4]})",
+            (row["VORP_per_1M_std"], row["VORP_per_1M_mean"]),
+            textcoords="offset points", xytext=(8, 4), fontsize=8,
+        )
+
+    # Legend proxies
+    for era, color in ERA_COLORS.items():
+        ax.scatter([], [], color=color, marker=markers[era], label=era, s=100)
+
+    ax.set_xlabel("Risk — Std Dev of VORP per $1M", fontsize=11)
+    ax.set_ylabel("Return — Mean VORP per $1M", fontsize=11)
+    ax.set_title("Risk-Return Profile of NBA Draft Pick Bins\n(Mean-Variance Framework)",
+                 fontweight="bold", fontsize=13)
+    ax.legend(title="Era")
+    ax.grid(True, alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(FIGURES_DIR / "fig4_risk_return.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  Saved fig4_risk_return.png")
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +268,7 @@ if __name__ == "__main__":
     plot_performance_per_dollar(df)
     plot_pick_vs_vorp_scatter(df)
     plot_era_comparison_line(df)
+    plot_risk_return(summary)
 
     print("\n=== OLS Regression ===")
     run_regressions(df)
