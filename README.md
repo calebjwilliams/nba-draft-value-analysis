@@ -16,11 +16,19 @@ Under the NBA rookie scale, all first-round picks generate surplus value — tea
 
 ## Dashboard
 
+Live link: https://nba-draft-value-analysis.streamlit.app/
+
+### Running locally
+
 ```bash
 uv run streamlit run dashboard/app.py
 ```
 
-Opens at `http://localhost:8501`. Five tabs:
+Opens at `http://localhost:8501`. 
+
+### Dashbaord Tabs:
+
+Five tabs:
 - **Value by Pick Bin** — VORP/WS/BPM per $1M by draft position and era
 - **Risk-Return** — mean-variance scatter by pick bin and era
 - **Pick # vs Value** — scatter with LOWESS trend lines, pre/post analytics
