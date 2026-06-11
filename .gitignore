@@ -9,6 +9,7 @@ __pycache__/
 uv.lock
 
 # Data — committed for reproducibility
+.tmp/
 
 # Jupyter
 .ipynb_checkpoints/

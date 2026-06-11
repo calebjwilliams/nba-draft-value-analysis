@@ -1,0 +1,4 @@
+bin,gap_pre,gap_pre_pval,gap_change_post,gap_change_pval
+Picks 6-14,-0.1615,0.0513,0.1926,0.0432
+Picks 15-30,-0.1996,0.0108,0.2022,0.0309
+Second Round,-0.4639,0.0,0.2843,0.0028

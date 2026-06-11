@@ -134,6 +134,16 @@ if __name__ == "__main__":
         "ROUND_NUMBER", "TEAM_CITY", "ORGANIZATION", "pick_bin", "era",
     ]].rename(columns={"TEAM_CITY": "DRAFT_TEAM"})
 
+    # Drop name_keys shared by 2+ distinct draft classes (e.g. two different
+    # players both normalizing to "marcus williams"). These cannot be
+    # disambiguated by name alone and would cross-contaminate the BBRef merge.
+    dup_counts = draft_meta.groupby("name_key")["DRAFT_YEAR"].nunique()
+    collision_keys = dup_counts[dup_counts > 1].index.tolist()
+    if collision_keys:
+        print(f"\nDropping {len(collision_keys)} name_key(s) with ambiguous "
+              f"draft-year matches: {collision_keys}")
+        draft_meta = draft_meta[~draft_meta["name_key"].isin(collision_keys)].copy()
+
     merged = bbref.merge(draft_meta, on="name_key", how="inner")
     merged = merged[merged["SEASON_END_YEAR"] >= merged["DRAFT_YEAR"]].copy()
     merged["years_pro"] = merged["SEASON_END_YEAR"] - merged["DRAFT_YEAR"]

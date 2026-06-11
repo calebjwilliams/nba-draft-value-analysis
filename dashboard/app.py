@@ -18,13 +18,16 @@ st.set_page_config(
 
 @st.cache_data
 def load_data():
-    df      = pd.read_csv("data/processed/analysis_dataset.csv")
-    summary = pd.read_csv("data/processed/summary_stats.csv")
-    reg     = pd.read_csv("data/processed/regression_results.csv")
-    bbref   = pd.read_csv("data/raw/bbref_advanced_stats.csv")
-    return df, summary, reg, bbref
+    df         = pd.read_csv("data/processed/analysis_dataset.csv")
+    summary    = pd.read_csv("data/processed/summary_stats.csv")
+    reg        = pd.read_csv("data/processed/regression_results.csv")
+    player_reg = pd.read_csv("data/processed/regression_results_player_level.csv")
+    bin_reg    = pd.read_csv("data/processed/regression_results_bin_interaction.csv")
+    check1     = pd.read_csv("data/processed/regression_results_check1_nseasons.csv")
+    bbref      = pd.read_csv("data/raw/bbref_advanced_stats.csv")
+    return df, summary, reg, player_reg, bin_reg, check1, bbref
 
-df, summary, reg, bbref_raw = load_data()
+df, summary, reg, player_reg, bin_reg, check1, bbref_raw = load_data()
 
 PICK_BIN_ORDER = ["Top 5", "Picks 6-14", "Picks 15-30", "Second Round"]
 ERA_COLORS     = {"Pre-Analytics": "#4878CF", "Post-Analytics": "#E07B39"}
@@ -285,9 +288,9 @@ with tab2:
     the average return per dollar spent. You want upper-left: high return, low risk.
 
     Top picks (green) sit upper-left. They are the most reliable bang for your buck.
-    Second-rounders (red) sit lower-right. Cheap contracts, but most of these guys
-    barely contribute. Only about **1 in 3** second-round picks produces positive value
-    in a given season, vs. nearly **9 in 10** for lottery picks.
+    Second-rounders (red) sit lower-right. Cheap contracts, but a much larger share
+    of these picks bust. About **1 in 3** second-round picks produces *negative* value
+    in a given season, vs. roughly **1 in 8** for lottery picks.
     """)
 
 # ── Tab 3: Scatter ───────────────────────────────────────────────────────────
@@ -336,37 +339,104 @@ with tab4:
     fig.update_layout(height=420)
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("""
-    **What's happening here:** Before 2010, there was a huge drop-off in value as you went
-    deeper in the draft. Teams were terrible at finding hidden gems. After 2010, that gap
-    shrunk. Teams got smarter. Mid-round and late picks started delivering closer to what
-    lottery picks delivered. The data confirms this shift happened right around 2010,
-    which lines up with when front offices started seriously investing in analytics departments.
-    """)
+    if metric == "VORP_per_1M":
+        st.markdown("""
+        **What's happening here:** Before 2010, there was a huge drop-off in value as you went
+        deeper in the draft. Teams were terrible at finding hidden gems. After 2010, that gap
+        shrunk. Teams got smarter. Mid-round and late picks started delivering closer to what
+        lottery picks delivered. The regression below confirms this shift is statistically
+        significant (P3, p = 0.031), and it lines up with when front offices started seriously
+        investing in analytics departments.
+        """)
+    elif metric == "WS_per_1M":
+        st.markdown("""
+        **What's happening here:** On Win Shares, the same general pattern is visible in the
+        chart, but it is **not statistically significant** (P5, p = 0.398; M5, p = 0.566) --
+        see the robustness tables below. VORP and Win Shares diverge here because VORP adjusts
+        for replacement level and Win Shares does not; the paper discusses this divergence
+        as a limitation rather than as a confirming result.
+        """)
+    else:
+        st.markdown("""
+        **What's happening here:** On BPM (a per-possession rate stat used as an injury
+        check), the convergence pattern is **not statistically significant** (M6, p = 0.931)
+        -- see the season-level table below. This suggests the VORP-based flattening may
+        partly reflect playing-time allocation changes rather than pure efficiency gains.
+        """)
 
-    st.subheader("Regression Results")
+    st.subheader("Primary Model: Player-Level, Rookie Contract Window (N = 839)")
     st.markdown("""
-    To test whether the value gap actually closed (not just eyeball it on the chart above),
-    we ran a regression. Think of it like fitting a best-fit line through the data and asking:
-    does the slope of that line change after 2010?
+    The paper's main specification collapses each player to **one observation**: cumulative
+    VORP over their first four seasons (the rookie contract window) divided by total salary
+    paid over that same window. This is the cleanest test of the rookie-scale surplus, since
+    it matches the period when the CBA price is fixed.
 
-    - **β(pick):** how much value per dollar drops with each additional pick slot (e.g. pick 5 vs pick 6)
-    - **β(pick×era):** the key number. Did that slope get flatter after 2010? Positive = yes, the gap narrowed
+    - **β(pick):** how much cumulative value per dollar drops with each additional pick slot
+    - **β(post):** did overall value per dollar shift after 2010?
+    - **β(pick×post):** the key number. Did the pick penalty get smaller after 2010? Positive = yes, the gap narrowed
     - **p(interact):** confidence level. Below 0.05 means we can be 95% confident the change is real, not random noise
 
-    We ran 6 versions of the model as cross-checks (different metrics, log scale, etc.).
-    M3 is the main one. The others confirm the result holds.
+    **P3 is the main model.** P1/P2 build up to it, P4 checks the result on a log scale, and
+    P5 swaps in Win Shares as an alternative performance metric.
     """)
-    reg_display = reg[["model", "n", "r2", "coef_pick", "pval_pick", "coef_interact", "pval_interact"]].copy()
-    reg_display.columns = ["Model", "N", "R²", "β(pick)", "p(pick)", "β(pick×era)", "p(interact)"]
 
-    def highlight_main(row):
-        if row["Model"] == "M3_interaction":
+    player_display = player_reg[
+        ["model", "n", "r2", "coef_pick", "pval_pick", "coef_post", "pval_post", "coef_interact", "pval_interact"]
+    ].copy()
+    player_display.columns = ["Model", "N", "R²", "β(pick)", "p(pick)", "β(post)", "p(post)", "β(pick×post)", "p(interact)"]
+    player_display = player_display.fillna("--")
+
+    def highlight_p3(row):
+        if row["Model"] == "P3_interaction":
             return ["background-color: #fff3cd; color: black"] * len(row)
         return [""] * len(row)
 
-    st.dataframe(reg_display.style.apply(highlight_main, axis=1), use_container_width=True)
-    st.caption("M3 (highlighted) is the main model. The β(pick×era) column tells us whether the relationship between draft position and value changed after 2010. Positive and significant (p < 0.05) means yes, it flattened.")
+    st.dataframe(player_display.style.apply(highlight_p3, axis=1), use_container_width=True)
+    st.caption(
+        "P3 (highlighted) is the main model: β(pick×post) = "
+        f"{player_reg.loc[player_reg['model'] == 'P3_interaction', 'coef_interact'].iloc[0]:.5f} "
+        f"(p = {player_reg.loc[player_reg['model'] == 'P3_interaction', 'pval_interact'].iloc[0]:.3f}). "
+        "The pick penalty got smaller after 2010 -- the value curve flattened."
+    )
+
+    st.markdown("**Robustness check: pick bins instead of a continuous pick number**")
+    st.markdown("""
+    Instead of treating pick number as a straight line, this version compares each bin
+    to Top 5 directly. "Pre gap" is how far behind Top 5 a bin was before 2010;
+    "Post change" is how much that gap closed afterward.
+    """)
+    bin_display = bin_reg.copy()
+    bin_display.columns = ["Bin", "Pre Gap vs Top 5", "p(pre gap)", "Post Change", "p(post change)"]
+    st.dataframe(bin_display, use_container_width=True)
+    st.caption(
+        "All three bins below Top 5 narrowed their gap significantly after 2010 "
+        "(Picks 6-14: p = 0.043, Picks 15-30: p = 0.031, Second Round: p = 0.003)."
+    )
+
+    st.markdown("**Robustness check: controlling for rookie-window data coverage**")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("β(pick×post)", f"{check1['coef_interact'].iloc[0]:.4f}", help="Same interaction as P3, with n_seasons added as a control")
+    c2.metric("p(interact)", f"{check1['pval_interact'].iloc[0]:.3f}")
+    c3.metric("p(pick×post), P3 alone", "0.031")
+    st.caption(
+        "Some players have fewer than 4 seasons of rookie-window data (mostly pre-2010 players, "
+        "due to a 2001 salary-data floor). Controlling for the number of seasons captured "
+        "(`n_seasons`) doesn't weaken the flattening result -- it *strengthens* it, from "
+        "p = 0.031 to p = 0.007. This suggests the convergence isn't an artifact of uneven data coverage."
+    )
+
+    st.subheader("Season-Level Robustness Checks (M1-M6, N = 6,095)")
+    st.markdown("""
+    As a cross-check, we also ran the same style of regression on the full season-by-season
+    panel (every player-season, not collapsed to the rookie window). M3 here is the
+    season-level analog of P3 above and points the same direction. M5 (Win Shares) and
+    M6 (BPM, a rate stat unaffected by games missed) are discussed in the paper's
+    limitations -- the convergence is weaker on these alternative metrics.
+    """)
+    reg_display = reg[["model", "n", "r2", "coef_pick", "pval_pick", "coef_interact", "pval_interact"]].copy()
+    reg_display.columns = ["Model", "N", "R²", "β(pick)", "p(pick)", "β(pick×era)", "p(interact)"]
+    st.dataframe(reg_display, use_container_width=True)
+    st.caption("These season-level models support the player-level finding above but are not the paper's primary specification.")
 
 # ── Tab 5: Player lookup ─────────────────────────────────────────────────────
 with tab5:
